@@ -1,16 +1,50 @@
 apply plugin: 'com.android.application'
 
 android {
+    buildToolsVersion '28.0.3'
+    ndkVersion '21.4.7075529' // current LTS atm
+
     compileSdkVersion 33
     defaultConfig {
         applicationId "com.google.ar.core.examples.java.helloar"
 
         // AR Optional apps must declare minSdkVersion >= 14.
         // AR Required apps must declare minSdkVersion >= 24.
-        minSdkVersion 24
+
+        minSdkVersion 26
         targetSdkVersion 33
         versionCode 1
         versionName '1.0'
+
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++1y", "-Wall"
+                arguments "-DANDROID_STL=c++_shared",
+                        "-DANDROID_ABI=arm64-v8a",
+                        "-DGLM_INCLUDE=${project.rootDir}/libs/glm",
+                        "-DOBOE_LIBPATH=${project.rootDir}/libs/Oboe/jni",
+                        "-DOBOE_INCLUDE=${project.rootDir}/libs/Oboe/include",
+                        "-DCLOUDXR_LIBPATH=${project.rootDir}/libs/CloudXR/jni",
+                        "-DCLOUDXR_INCLUDE=${project.rootDir}/libs/CloudXR/include",
+                        "-DC_SHARED_INCLUDE=${project.rootDir}/../../../../shared"
+            }
+        }
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+        sourceSets {
+            main {
+                jniLibs.srcDirs = ["${project.rootDir}/libs/Oboe/jni"]
+            }
+        }
+    }
+    signingConfigs {
+        release {
+            storeFile file('./dummy.jks')
+            storePassword 'nvidia'
+            keyAlias 'nvidia'
+            keyPassword 'nvidia'
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -20,7 +54,24 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
+    }
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt"
+        }
+    }
+    packagingOptions {
+        pickFirst 'lib/x86/liboboe.so'
+        pickFirst 'lib/armeabi-v7a/liboboe.so'
+        pickFirst 'lib/arm64-v8a/liboboe.so'
+    }
+}
+
+repositories {
+    flatDir {
+        dirs "${project.rootDir}/libs"
     }
 }
 
@@ -34,4 +85,8 @@ dependencies {
 
     implementation 'androidx.appcompat:appcompat:1.1.0'
     implementation 'com.google.android.material:material:1.1.0'
+    implementation 'com.nvidia.CloudXRClient:CloudXR@aar'
 }
+
+preBuild.dependsOn(':extractOboe')
+preBuild.dependsOn(':extractCloudXR')

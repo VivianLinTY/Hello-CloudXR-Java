@@ -66,6 +66,7 @@ public class BackgroundRenderer {
   private final VertexBuffer cameraTexCoordsVertexBuffer;
   private Shader backgroundShader;
   private Shader occlusionShader;
+  private Shader backgroundScreenShader;
   private final Texture cameraDepthTexture;
   private final Texture cameraColorTexture;
   private Texture depthColorPaletteTexture;
@@ -123,6 +124,14 @@ public class BackgroundRenderer {
       backgroundShader = null;
       this.useDepthVisualization = useDepthVisualization;
     }
+    if (backgroundScreenShader != null) {
+      if (this.useDepthVisualization == useDepthVisualization) {
+        return;
+      }
+      backgroundScreenShader.close();
+      backgroundScreenShader = null;
+      this.useDepthVisualization = useDepthVisualization;
+    }
     if (useDepthVisualization) {
      depthColorPaletteTexture =
         Texture.createFromAsset(
@@ -140,16 +149,34 @@ public class BackgroundRenderer {
               .setTexture("u_ColorMap", depthColorPaletteTexture)
               .setDepthTest(false)
               .setDepthWrite(false);
+      backgroundScreenShader =
+              Shader.createFromAssets(
+                      render,
+                      "shaders/background_show_depth_color_visualization.vert",
+                      "shaders/background_show_depth_color_visualization.frag",
+                      /*defines=*/ null)
+                      .setTexture("u_CameraColorTexture", cameraColorTexture)
+                      .setDepthTest(false)
+                      .setDepthWrite(false);
     } else {
       backgroundShader =
           Shader.createFromAssets(
                   render,
                   "shaders/background_show_camera.vert",
-                  "shaders/background_show_camera.frag",
+                  "shaders/background_show_camera_ext.frag",
                   /*defines=*/ null)
               .setTexture("u_CameraColorTexture", cameraColorTexture)
               .setDepthTest(false)
               .setDepthWrite(false);
+      backgroundScreenShader =
+              Shader.createFromAssets(
+                      render,
+                      "shaders/background_show_camera.vert",
+                      "shaders/background_show_camera.frag",
+                      /*defines=*/ null)
+                      .setTexture("u_CameraColorTexture", cameraColorTexture)
+                      .setDepthTest(false)
+                      .setDepthWrite(false);
     }
   }
 
