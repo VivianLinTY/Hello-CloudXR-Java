@@ -35,7 +35,8 @@ public class BackgroundRenderer {
 
   // Shader names.
   private static final String VERTEX_SHADER_NAME = "shaders/screenquad.vert";
-  private static final String FRAGMENT_SHADER_NAME = "shaders/screenquad.frag";
+  private static final String FRAGMENT_SHADER_NAME = "shaders/screenquad_ext.frag";
+  private static final String FRAGMENT_SHADER_SCREEN_NAME = "shaders/screenquad.frag";
 
   private static final int COORDS_PER_VERTEX = 2;
   private static final int TEXCOORDS_PER_VERTEX = 2;
@@ -43,13 +44,24 @@ public class BackgroundRenderer {
 
   private FloatBuffer quadCoords;
   private FloatBuffer quadTexCoords;
+  private FloatBuffer quadKuvCoords;
 
   private int quadProgram;
+  private int quadScreenProgram;
 
+  private int uniform_texture;
   private int quadPositionParam;
   private int quadTexCoordParam;
   private int textureId = -1;
   private boolean suppressTimestampZeroRendering = true;
+
+  private static final int kQueueLen = 16;
+  private final int[] texture_ids = new int[kQueueLen];
+  private int current_texture = 0;
+  private int[] fbos = new int[1];
+
+  private int width_ = 1920;
+  private int height_ = 1080;
 
   public int getTextureId() {
     return textureId;
@@ -62,8 +74,12 @@ public class BackgroundRenderer {
    *
    * @param context Needed to access shader source.
    */
-  public void createOnGlThread(Context context) throws IOException {
+  public void createOnGlThread(Context context, int width, int height) throws IOException {
     // Generate the background texture.
+
+    this.width_ = width;
+    this.height_ = height;
+
     int[] textures = new int[1];
     GLES20.glGenTextures(1, textures, 0);
     textureId = textures[0];
@@ -73,6 +89,19 @@ public class BackgroundRenderer {
     GLES20.glTexParameteri(textureTarget, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
     GLES20.glTexParameteri(textureTarget, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
     GLES20.glTexParameteri(textureTarget, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+
+    GLES20.glGenTextures(kQueueLen, texture_ids, 0);
+    GLES20.glGenFramebuffers(1, fbos, 0);
+    textureTarget = GLES20.GL_TEXTURE_2D;
+    for (int idx = 0; idx < kQueueLen; idx++) {
+      GLES20.glBindTexture(textureTarget, texture_ids[idx]);
+      GLES20.glTexParameteri(textureTarget, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+      GLES20.glTexParameteri(textureTarget, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+      GLES20.glTexParameteri(textureTarget, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+      GLES20.glTexParameteri(textureTarget, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+      GLES20.glTexImage2D(textureTarget, 0, GLES20.GL_RGBA, width_, height_, 0,
+              GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+    }
 
     int numVertices = 4;
     if (numVertices != QUAD_COORDS.length / COORDS_PER_VERTEX) {
@@ -90,19 +119,33 @@ public class BackgroundRenderer {
     bbTexCoordsTransformed.order(ByteOrder.nativeOrder());
     quadTexCoords = bbTexCoordsTransformed.asFloatBuffer();
 
+    ByteBuffer bbKuvCoordsTransformed =
+            ByteBuffer.allocateDirect(kUVs.length * FLOAT_SIZE);
+    bbKuvCoordsTransformed.order(ByteOrder.nativeOrder());
+    quadKuvCoords = bbKuvCoordsTransformed.asFloatBuffer();
+    quadKuvCoords.put(kUVs);
+    quadKuvCoords.position(0);
+
     int vertexShader =
         ShaderUtil.loadGLShader(TAG, context, GLES20.GL_VERTEX_SHADER, VERTEX_SHADER_NAME);
     int fragmentShader =
         ShaderUtil.loadGLShader(TAG, context, GLES20.GL_FRAGMENT_SHADER, FRAGMENT_SHADER_NAME);
+    int fragmentScreenShader =
+            ShaderUtil.loadGLShader(TAG, context, GLES20.GL_FRAGMENT_SHADER, FRAGMENT_SHADER_SCREEN_NAME);
 
     quadProgram = GLES20.glCreateProgram();
     GLES20.glAttachShader(quadProgram, vertexShader);
     GLES20.glAttachShader(quadProgram, fragmentShader);
     GLES20.glLinkProgram(quadProgram);
-    GLES20.glUseProgram(quadProgram);
-
     ShaderUtil.checkGLError(TAG, "Program creation");
 
+    quadScreenProgram = GLES20.glCreateProgram();
+    GLES20.glAttachShader(quadScreenProgram, vertexShader);
+    GLES20.glAttachShader(quadScreenProgram, fragmentScreenShader);
+    GLES20.glLinkProgram(quadScreenProgram);
+    ShaderUtil.checkGLError(TAG, "Program screen creation");
+
+    uniform_texture = GLES20.glGetUniformLocation(quadProgram, "sTexture");
     quadPositionParam = GLES20.glGetAttribLocation(quadProgram, "a_Position");
     quadTexCoordParam = GLES20.glGetAttribLocation(quadProgram, "a_TexCoord");
 
@@ -122,7 +165,7 @@ public class BackgroundRenderer {
    *
    * @param frame The current {@code Frame} as returned by {@link Session#update()}.
    */
-  public void draw(@NonNull Frame frame) {
+  public void draw(@NonNull Frame frame, int offset) {
     // If display rotation changed (also includes view size change), we need to re-query the uv
     // coordinates for the screen rect, as they may have changed as well.
     if (frame.hasDisplayGeometryChanged()) {
@@ -139,7 +182,7 @@ public class BackgroundRenderer {
       return;
     }
 
-    draw();
+    draw(offset);
   }
 
   /**
@@ -151,7 +194,7 @@ public class BackgroundRenderer {
    * Frame#transformCoordinates2d(Coordinates2d, float[], Coordinates2d, float[])}.
    */
   public void draw(
-      int imageWidth, int imageHeight, float screenAspectRatio, int cameraToDisplayRotation) {
+      int imageWidth, int imageHeight, float screenAspectRatio, int cameraToDisplayRotation, int offset) {
     // Crop the camera image to fit the screen aspect ratio.
     float imageAspectRatio = (float) imageWidth / imageHeight;
     float croppedWidth;
@@ -189,26 +232,49 @@ public class BackgroundRenderer {
     quadTexCoords.position(0);
     quadTexCoords.put(texCoordTransformed);
 
-    draw();
+    draw(offset);
   }
 
   /**
    * Draws the camera background image using the currently configured {@link
    * BackgroundRenderer#quadTexCoords} image texture coordinates.
    */
-  private void draw() {
+  private void draw(int offset) {
     // Ensure position is rewound before use.
     quadTexCoords.position(0);
+
+    boolean render_to_screen = offset >= 0;
+    GLES20.glUseProgram(render_to_screen ? quadScreenProgram : quadProgram);
 
     // No need to test or write depth, the screen quad has arbitrary depth, and is expected
     // to be drawn first.
     GLES20.glDisable(GLES20.GL_DEPTH_TEST);
     GLES20.glDepthMask(false);
 
-    GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-    GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId);
+    if (render_to_screen) {
+      // Render to the screen
+      GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+    } else {
+      // Render to internal queue
+      GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbos[0]);
+      GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+              GLES20.GL_TEXTURE_2D, texture_ids[current_texture], 0);
+      GLES20.glViewport(0, 0, width_, height_);
+      current_texture = (current_texture + 1) % kQueueLen;
+    }
 
-    GLES20.glUseProgram(quadProgram);
+    GLES20.glUniform1i(uniform_texture, 1);
+    GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+    if (render_to_screen) {
+      offset++;
+      int idx = current_texture < offset ?
+              (kQueueLen + (current_texture - offset)) % kQueueLen :
+              (current_texture - offset) % kQueueLen;
+
+      GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture_ids[idx]);
+    } else {
+      GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId);
+    }
 
     // Set the vertex positions.
     GLES20.glVertexAttribPointer(
@@ -216,7 +282,8 @@ public class BackgroundRenderer {
 
     // Set the texture coordinates.
     GLES20.glVertexAttribPointer(
-        quadTexCoordParam, TEXCOORDS_PER_VERTEX, GLES20.GL_FLOAT, false, 0, quadTexCoords);
+        quadTexCoordParam, TEXCOORDS_PER_VERTEX, GLES20.GL_FLOAT, false, 0,
+            render_to_screen ? quadKuvCoords : quadTexCoords);
 
     // Enable vertex arrays
     GLES20.glEnableVertexAttribArray(quadPositionParam);
@@ -229,10 +296,13 @@ public class BackgroundRenderer {
     GLES20.glDisableVertexAttribArray(quadTexCoordParam);
 
     // Restore the depth state for further drawing.
+    GLES20.glUseProgram(0);
     GLES20.glDepthMask(true);
     GLES20.glEnable(GLES20.GL_DEPTH_TEST);
 
     ShaderUtil.checkGLError(TAG, "BackgroundRendererDraw");
+
+    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
   }
 
   /**
@@ -250,4 +320,9 @@ public class BackgroundRenderer {
       new float[] {
         -1.0f, -1.0f, +1.0f, -1.0f, -1.0f, +1.0f, +1.0f, +1.0f,
       };
+
+  private static final float[] kUVs =
+          new float[]{
+                  0.0f, 0.0f, +1.0f, 0.0f, 0.0f, +1.0f, +1.0f, +1.0f,
+          };
 }

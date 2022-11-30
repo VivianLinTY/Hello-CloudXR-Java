@@ -21,10 +21,12 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.DisplayManager.DisplayListener;
+import android.util.Size;
 import android.view.Display;
 import android.view.Surface;
 import android.view.WindowManager;
 import com.google.ar.core.Session;
+import com.google.ar.core.examples.java.helloar.JniInterface;
 
 /**
  * Helper to track the display rotations. In particular, the 180 degree rotations are not notified
@@ -63,7 +65,7 @@ public final class DisplayRotationHelper implements DisplayListener {
 
   /**
    * Records a change in surface dimensions. This will be later used by {@link
-   * #updateSessionIfNeeded(Session)}. Should be called from {@link
+   * #updateSessionIfNeeded(long,Session)}. Should be called from {@link
    * android.opengl.GLSurfaceView.Renderer
    * #onSurfaceChanged(javax.microedition.khronos.opengles.GL10, int, int)}.
    *
@@ -84,10 +86,12 @@ public final class DisplayRotationHelper implements DisplayListener {
    *
    * @param session the {@link Session} object to update if display geometry changed.
    */
-  public void updateSessionIfNeeded(Session session) {
+  public void updateSessionIfNeeded(long nativeApplication, Session session) {
     if (viewportChanged) {
       int displayRotation = display.getRotation();
       session.setDisplayGeometry(displayRotation, viewportWidth, viewportHeight);
+      JniInterface.onDisplayGeometryChanged(
+              nativeApplication, displayRotation, viewportWidth, viewportHeight);
       viewportChanged = false;
     }
   }
@@ -160,5 +164,9 @@ public final class DisplayRotationHelper implements DisplayListener {
   @Override
   public void onDisplayChanged(int displayId) {
     viewportChanged = true;
+  }
+
+  public Size getDisplaySize(){
+    return new Size(viewportWidth, viewportHeight);
   }
 }

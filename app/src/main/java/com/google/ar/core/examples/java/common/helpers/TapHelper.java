@@ -28,7 +28,12 @@ import java.util.concurrent.BlockingQueue;
  */
 public final class TapHelper implements OnTouchListener {
   private final GestureDetector gestureDetector;
-  private final BlockingQueue<MotionEvent> queuedSingleTaps = new ArrayBlockingQueue<>(16);
+  private final BlockingQueue<TapEvent> queuedSingleTaps = new ArrayBlockingQueue<>(16);
+
+    public static class TapEvent {
+        public MotionEvent event;
+        public boolean isLongPress;
+    }
 
   /**
    * Creates the tap helper.
@@ -43,9 +48,20 @@ public final class TapHelper implements OnTouchListener {
               @Override
               public boolean onSingleTapUp(MotionEvent e) {
                 // Queue tap if there is space. Tap is lost if queue is full.
-                queuedSingleTaps.offer(e);
+                  TapEvent event = new TapEvent();
+                  event.event = e;
+                  event.isLongPress = false;
+                  queuedSingleTaps.offer(event);
                 return true;
               }
+
+                @Override
+                public void onLongPress(final MotionEvent e) {
+                    TapEvent event = new TapEvent();
+                    event.event = e;
+                    event.isLongPress = true;
+                    queuedSingleTaps.offer(event);
+                }
 
               @Override
               public boolean onDown(MotionEvent e) {
@@ -59,7 +75,7 @@ public final class TapHelper implements OnTouchListener {
    *
    * @return if a tap was queued, a MotionEvent for the tap. Otherwise null if no taps are queued.
    */
-  public MotionEvent poll() {
+  public TapEvent poll() {
     return queuedSingleTaps.poll();
   }
 
