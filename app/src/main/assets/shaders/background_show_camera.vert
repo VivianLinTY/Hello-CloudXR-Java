@@ -1,5 +1,7 @@
+#version 300 es
 /*
- * Copyright 2017 Google Inc. All Rights Reserved.
+ * Copyright 2017 Google LLC
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -12,13 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#extension GL_OES_EGL_image_external : require
 
-precision mediump float;
-varying vec2 v_TexCoord;
-uniform samplerExternalOES sTexture;
+layout(location = 0) in vec4 a_Position;
+layout(location = 1) in vec2 a_CameraTexCoord;
+// The virtual scene texture coordinate is unused in the background shader, but
+// is defined in the BackgroundRenderer Mesh.
+layout(location = 2) in vec2 a_VirtualSceneTexCoord;
 
+out vec2 v_CameraTexCoord;
 
 void main() {
-    gl_FragColor = texture2D(sTexture, v_TexCoord);
+  gl_Position = a_Position;
+  v_CameraTexCoord = a_CameraTexCoord;
 }

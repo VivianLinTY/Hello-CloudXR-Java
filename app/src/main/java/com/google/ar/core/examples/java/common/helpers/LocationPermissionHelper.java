@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google LLC
+ * Copyright 2022 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,26 +24,37 @@ import android.provider.Settings;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-/** Helper to ask camera permission. */
-public final class CameraPermissionHelper {
-  private static final int CAMERA_PERMISSION_CODE = 0;
-  private static final String CAMERA_PERMISSION = Manifest.permission.CAMERA;
+/** Helper to ask location permission. */
+public final class LocationPermissionHelper {
+  private static final int LOCATION_PERMISSION_CODE = 1;
+  private static final String LOCATION_PERMISSION = Manifest.permission.ACCESS_FINE_LOCATION;
 
   /** Check to see we have the necessary permissions for this app. */
-  public static boolean hasCameraPermission(Activity activity) {
-    return ContextCompat.checkSelfPermission(activity, CAMERA_PERMISSION)
+  public static boolean hasFineLocationPermission(Activity activity) {
+    return ContextCompat.checkSelfPermission(activity, LOCATION_PERMISSION)
         == PackageManager.PERMISSION_GRANTED;
   }
 
   /** Check to see we have the necessary permissions for this app, and ask for them if we don't. */
-  public static void requestCameraPermission(Activity activity) {
+  public static void requestFineLocationPermission(Activity activity) {
     ActivityCompat.requestPermissions(
-        activity, new String[] {CAMERA_PERMISSION}, CAMERA_PERMISSION_CODE);
+        activity, new String[] {LOCATION_PERMISSION}, LOCATION_PERMISSION_CODE);
+  }
+
+  /** Check to see if the array of given permissions contain the location permission. */
+  public static boolean hasFineLocationPermissionsResponseInResult(String[] permissions) {
+    for (String permission : permissions) {
+      if (LOCATION_PERMISSION.equals(permission)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /** Check to see if we need to show the rationale for this permission. */
   public static boolean shouldShowRequestPermissionRationale(Activity activity) {
-    return ActivityCompat.shouldShowRequestPermissionRationale(activity, CAMERA_PERMISSION);
+    return ActivityCompat.shouldShowRequestPermissionRationale(activity, LOCATION_PERMISSION);
   }
 
   /** Launch Application Setting to grant permission. */

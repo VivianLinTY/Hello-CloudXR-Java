@@ -1,6 +1,6 @@
 #version 300 es
 /*
- * Copyright 2017 Google LLC
+ * Copyright 2022 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,13 +14,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+precision mediump float;
 
-uniform mat4 u_ModelViewProjection;
-uniform float u_PointSize;
+uniform sampler2D u_Texture;
 
-layout(location = 0) in vec4 a_Position;
+in vec2 v_TexCoord;
+
+layout(location = 0) out vec4 o_FragColor;
 
 void main() {
-  gl_Position = u_ModelViewProjection * vec4(a_Position.xyz, 1.0);
-  gl_PointSize = u_PointSize;
+  // Mirror texture coordinates over the X axis
+  vec2 texCoord = vec2(v_TexCoord.x, 1.0 - v_TexCoord.y);
+
+  o_FragColor = vec4(texture(u_Texture, texCoord).rgb, 1.0);
+  return;
 }
